@@ -11,11 +11,21 @@
 ├── modelforge/
 │   ├── __init__.py
 │   ├── main.py
-│   └── intent_parser.py      # Natural language to ML spec conversion
+│   ├── intent_parser.py      # Natural language to ML spec conversion
+│   └── data_discovery/       # Data discovery and catalog management
+│       ├── __init__.py
+│       ├── catalog.py        # Dataset catalog implementation
+│       ├── discovery_service.py  # Dataset discovery service
+│       └── ine_connector.py   # INE API connector
 ├── tests/
 │   ├── __init__.py
 │   ├── test_main.py
-│   └── test_intent_parser.py # Intent parser tests
+│   ├── test_intent_parser.py  # Intent parser tests
+│   └── data_discovery/        # Data discovery tests
+│       ├── __init__.py
+│       ├── test_catalog.py
+│       ├── test_discovery_service.py
+│       └── test_ine_connector.py
 ├── .gitignore
 ├── Dockerfile
 ├── README.md
@@ -40,6 +50,28 @@ The intent parser module (`modelforge/intent_parser.py`) converts natural langua
   - Unit test coverage
   - LLM prompt template for natural language parsing
 
+### Data Discovery (Completed)
+The data discovery module (`modelforge/data_discovery/`) manages dataset discovery and catalog functionality:
+
+- **Dataset Catalog**
+  - Dataset metadata management
+  - Search by name, description, and tags
+  - Add/remove dataset functionality
+  - Pydantic models for data validation
+
+- **INE Connector**
+  - Spanish Statistical Office (INE) API integration
+  - Dataset metadata retrieval
+  - Search functionality
+  - Rate limiting and caching
+  - Series data retrieval with filtering
+
+- **Features**
+  - Comprehensive test coverage
+  - Async/await support
+  - Error handling
+  - Data validation
+
 Example usage:
 ```python
 from modelforge.intent_parser import parse_intent
@@ -55,6 +87,57 @@ print(spec.features)   # ["temp", "unemployment_rate", "sentiment_score"]
 print(spec.metric)     # rmse
 print(spec.horizon)    # 3M
 ```
+
+## Usage Examples
+
+### Using the Intent Parser
+```python
+from modelforge.intent_parser import parse_intent
+
+# Convert natural language to ML specification
+description = "Predict monthly sales using temperature and unemployment rate data"
+spec = parse_intent(description)
+
+print(spec.task_type)  # time_series_regression
+print(spec.target)     # sales
+print(spec.features)   # ["temp", "unemployment_rate", "sentiment_score"]
+```
+
+### Using the Data Discovery
+```python
+import asyncio
+from modelforge.data_discovery.catalog import DatasetCatalog
+from modelforge.data_discovery.discovery_service import DiscoveryService
+from modelforge.data_discovery.ine_connector import INEConnector
+
+async def main():
+    # Initialize components
+    catalog = DatasetCatalog()
+    ine = INEConnector()
+    discovery = DiscoveryService(catalog, ine)
+    
+    # Search for datasets
+    datasets = await discovery.search_datasets("inflation spain")
+    for dataset in datasets:
+        print(f"Found dataset: {dataset.name}")
+        print(f"Description: {dataset.description}")
+        print(f"Tags: {dataset.tags}")
+        print("---")
+    
+    # Get specific dataset metadata
+    ipc = await discovery.get_dataset_metadata("IPC")
+    print(f"IPC dataset schema: {ipc.schema}")
+    
+    # Get actual data
+    data = await ine.get_dataset_data(
+        dataset_id="IPC",
+        start_date="2024-01-01",
+        end_date="2024-03-01"
+    )
+    print("Latest IPC data:", data)
+
+if __name__ == "__main__":
+    asyncio.run(main())
 
 ## Development Setup
 

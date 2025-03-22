@@ -69,22 +69,32 @@ Each node in the system performs a specific function:
 ### Dataset Metadata Format
 ```json
 {
-  "name": "Spain Unemployment",
+  "id": "IPC",
+  "name": "Spain Consumer Price Index",
   "source": "INE API",
-  "endpoint": "https://servicios.ine.es/...",
-  "schema": {"date": "datetime", "value": "float"}
+  "endpoint": "https://servicios.ine.es/wstempus/js/ES/DATOS_TABLA/50934?date=20240101:20240301",
+  "schema": {
+    "date": "datetime",
+    "value": "float",
+    "group": "string",
+    "category": "string"
+  },
+  "update_frequency": "monthly",
+  "last_updated": "2024-03-01",
+  "description": "Monthly consumer price index data for Spain",
+  "tags": ["economics", "inflation", "spain"]
 }
 ```
 
 ## 5. External API Integration
 
-| API | Base URL | Authentication | Rate Limit | Format |
-|-----|----------|----------------|------------|--------|
-| INE | https://servicios.ine.es | None | 100 req/min | JSON |
-| AEMET | https://opendata.aemet.es | API key | 60 req/min | JSON |
-| Eurostat | https://ec.europa.eu/eurostat/api | None | 500 req/min | JSON/XML |
-| Copernicus | https://cds.climate.copernicus.eu | API key | 10 req/min | NetCDF |
-| CIMA | https://cima.aemps.es | None | 100 req/min | JSON |
+| API | Base URL | Authentication | Rate Limit | Format | Status |
+|-----|----------|----------------|------------|--------|--------|
+| INE | https://servicios.ine.es | None | 100 req/min | JSON | Implemented |
+| AEMET | https://opendata.aemet.es | API key | 60 req/min | JSON | Planned |
+| Eurostat | https://ec.europa.eu/eurostat/api | None | 500 req/min | JSON/XML | Planned |
+| Copernicus | https://cds.climate.copernicus.eu | API key | 10 req/min | NetCDF | Planned |
+| CIMA | https://cima.aemps.es | None | 100 req/min | JSON | Planned |
 
 ## 6. Deployment Architecture
 

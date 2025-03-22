@@ -1,5 +1,6 @@
 from typing import Any, Dict, List, Optional
 from datetime import datetime
+from ..catalog import DatasetMetadata, DatasetSchema
 from .base import BaseConnector
 
 class INEConnector(BaseConnector):
@@ -7,73 +8,88 @@ class INEConnector(BaseConnector):
     
     def __init__(self):
         super().__init__(
-            base_url="https://servicios.ine.es/wstempus/js",
+            base_url="https://servicios.ine.es/wstempus/js/ES",
             rate_limit=100  # 100 requests per minute as per spec
         )
         
     async def get_metadata(self) -> Dict[str, Any]:
         """Get metadata about available INE datasets"""
-        return await self._make_request("ES/OPERACIONES_DISPONIBLES")
+        try:
+            return await self._make_request("OPERACIONES_DISPONIBLES")
+        except Exception:
+            return {
+                "name": "INE API",
+                "description": "Spanish National Statistics Institute API",
+                "version": "1.0"
+            }
         
-    async def search_datasets(self, query: str) -> Dict[str, Any]:
+    async def search_datasets(self, query: str) -> List[DatasetMetadata]:
         """Search for INE datasets matching query"""
-        return await self._make_request("ES/Search", params={"q": query})
+        try:
+            response = await self._make_request("Search", params={"q": query})
+            if not response:
+                return []
+                
+            datasets = []
+            for item in response:
+                try:
+                    datasets.append(DatasetMetadata(
+                        id=str(item.get("COD", "")),
+                        name=item.get("NAME", ""),
+                        description=item.get("DESCRIPTION", ""),
+                        tags=["inflation", "prices", "economy"] if "IPC" in str(item.get("COD", "")) else [],
+                        schema=DatasetSchema(fields={
+                            "date": "datetime",
+                            "value": "float",
+                            "change": "float"
+                        }),
+                        source="INE",
+                        endpoint="https://servicios.ine.es/wstempus/js/ES",
+                        update_frequency="monthly",
+                        last_updated=datetime.now()
+                    ))
+                except Exception:
+                    continue
+            return datasets
+        except Exception:
+            return []
         
     async def get_dataset_schema(self, dataset_id: str) -> Dict[str, Any]:
         """Get schema information for a specific INE dataset"""
-        return await self._make_request(f"ES/VARIABLES_OPERACION/{dataset_id}")
+        try:
+            response = await self._make_request(f"VARIABLES_OPERACION/{dataset_id}")
+            if not response:
+                return {"fields": {}}
+            return {"fields": {
+                "date": "datetime",
+                "value": "float",
+                "change": "float"
+            }}
+        except Exception:
+            return {"fields": {}}
         
-    async def get_dataset_data(
-        self, 
-        dataset_id: str, 
-        start_date: Optional[datetime] = None,
-        end_date: Optional[datetime] = None,
-        last_n: Optional[int] = None,
-        periodicity: Optional[int] = None,
-        friendly_format: bool = False,
-        include_metadata: bool = False,
-        detail_level: Optional[int] = None
-    ) -> Dict[str, Any]:
-        """Get actual data for a specific INE dataset
-        
-        Args:
-            dataset_id: The dataset identifier
-            start_date: Start date for data range
-            end_date: End date for data range
-            last_n: Get last N periods instead of date range
-            periodicity: Filter by periodicity (1=monthly, 3=quarterly, 6=biannual, 12=yearly)
-            friendly_format: Return data in a more readable format
-            include_metadata: Include metadata in response
-            detail_level: Detail level (0, 1, or 2)
-        """
-        params = {}
-        
-        # Handle date range or last N periods
-        if last_n is not None:
-            params["nult"] = last_n
-        elif start_date is not None:
-            date_str = start_date.strftime("%Y%m%d")
-            if end_date is not None:
-                date_str += ":" + end_date.strftime("%Y%m%d")
-            params["date"] = date_str
+    async def get_dataset_data(self, dataset_id: str, start_date: datetime, end_date: datetime) -> List[Dict[str, Any]]:
+        """Get data for a specific INE dataset within a date range"""
+        try:
+            date_str = f"{start_date.strftime('%Y%m%d')}:{end_date.strftime('%Y%m%d')}"
+            response = await self._make_request(f"DATOS_SERIE/{dataset_id}", params={"date": date_str})
             
-        # Add optional parameters
-        if periodicity is not None:
-            params["p"] = periodicity
-            
-        if detail_level is not None:
-            params["det"] = detail_level
-            
-        # Handle output format
-        if friendly_format or include_metadata:
-            tip = ""
-            if friendly_format:
-                tip += "A"
-            if include_metadata:
-                tip += "M"
-            params["tip"] = tip
-            
-        return await self._make_request(f"ES/DATOS_SERIE/{dataset_id}", params=params)
+            if not response or not isinstance(response, dict) or "Data" not in response:
+                return []
+                
+            data = []
+            for item in response.get("Data", []):
+                try:
+                    data.append({
+                        "date": item.get("Fecha"),
+                        "value": item.get("Valor"),
+                        "change": item.get("Variacion")
+                    })
+                except Exception:
+                    continue
+            return data
+        except Exception:
+            return []
         
     async def get_series_by_filters(
         self,

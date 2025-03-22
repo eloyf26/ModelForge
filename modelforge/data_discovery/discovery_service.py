@@ -1,28 +1,31 @@
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 import asyncio
 from datetime import datetime
 
 from .catalog import DatasetCatalog, DatasetMetadata, DatasetSchema
 from .connectors import INEConnector, AEMETConnector, EurostatConnector
+from .connectors.base import BaseConnector
 
 class DataDiscoveryService:
     """Main service for discovering and cataloging datasets"""
     
-    def __init__(self, connectors: List[Any] = None):
+    def __init__(self, connectors: Optional[List[BaseConnector]] = None):
         self.catalog = DatasetCatalog()
-        if connectors is None:
-            self.connectors = {
-                'ine': INEConnector(),
-                # Add other connectors as they are implemented
-                # 'aemet': AEMETConnector(),
-                # 'eurostat': EurostatConnector(),
-            }
-        else:
-            self.connectors = {
-                f"{connector.__class__.__name__.lower().replace('connector', '')}": connector
-                for connector in connectors
-            }
+        self.connectors = connectors or []
+        self._active_connectors = []
         
+    async def __aenter__(self):
+        self._active_connectors = []
+        for connector in self.connectors:
+            await connector.__aenter__()
+            self._active_connectors.append(connector)
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        for connector in self._active_connectors:
+            await connector.__aexit__(exc_type, exc_val, exc_tb)
+        self._active_connectors = []
+
     async def refresh_catalog(self) -> None:
         """Refresh the catalog by fetching latest metadata from all connectors"""
         async def refresh_connector(name: str, connector: Any) -> List[DatasetMetadata]:
@@ -108,9 +111,15 @@ class DataDiscoveryService:
             for dataset in datasets:
                 self.catalog.add_dataset(dataset)
                 
-    def search_datasets(self, query: str, tags: List[str] = None) -> List[DatasetMetadata]:
-        """Search for datasets matching query and tags"""
-        return self.catalog.search_datasets(query, tags)
+    async def search_datasets(self, query: str):
+        if not self._active_connectors:
+            raise RuntimeError("DataDiscoveryService must be used as async context manager")
+        
+        results = []
+        for connector in self._active_connectors:
+            result = await connector.search_datasets(query)
+            results.extend(result)
+        return results
         
     def get_dataset_metadata(self, name: str) -> DatasetMetadata:
         """Get metadata for a specific dataset"""

@@ -5,8 +5,8 @@ from dotenv import load_dotenv
 
 from modelforge.intent_parser import parse_intent
 from modelforge.data_discovery.catalog import DatasetCatalog
-from modelforge.data_discovery.discovery_service import DiscoveryService
-from modelforge.data_discovery.ine_connector import INEConnector
+from modelforge.data_discovery.discovery_service import DataDiscoveryService
+from modelforge.data_discovery.connectors.ine import INEConnector
 
 async def run_workflow():
     print("1. Starting Intent Parsing...")
@@ -29,40 +29,48 @@ async def run_workflow():
 
     print("\n2. Starting Data Discovery...")
     # Initialize data discovery components
-    catalog = DatasetCatalog()
-    ine = INEConnector()
-    discovery = DiscoveryService(catalog, ine)
+    discovery = DataDiscoveryService([INEConnector()])
 
-    # Search for relevant datasets based on the specification
-    search_query = f"{spec.target} spain"
-    print(f"\nSearching for datasets with query: {search_query}")
-    
-    datasets = await discovery.search_datasets(search_query)
-    print(f"\nFound {len(datasets)} relevant datasets:")
-    
-    for dataset in datasets:
-        print(f"\nDataset: {dataset.name}")
-        print(f"ID: {dataset.id}")
-        print(f"Description: {dataset.description}")
-        print(f"Tags: {dataset.tags}")
-        print("Schema:", dataset.schema)
-        print("---")
+    async with discovery:
+        # Search for relevant datasets based on the specification
+        search_query = f"{spec.target} spain"
+        print(f"\nSearching for datasets with query: {search_query}")
+        
+        try:
+            datasets = await discovery.search_datasets(search_query)
+            if not datasets:
+                print("\nNo datasets found matching the search criteria.")
+                return
+                
+            print(f"\nFound {len(datasets)} relevant datasets:")
+            for dataset in datasets:
+                print(f"\nDataset: {dataset.name}")
+                print(f"ID: {dataset.id}")
+                print(f"Description: {dataset.description}")
+                print(f"Tags: {dataset.tags}")
+                print("Schema:", dataset.schema)
+                print("---")
 
-    # Get specific dataset data (IPC - Consumer Price Index)
-    print("\n3. Fetching Actual Data...")
-    end_date = datetime.now()
-    start_date = end_date - timedelta(days=365)  # Last year of data
-    
-    print(f"\nFetching IPC data from {start_date.date()} to {end_date.date()}")
-    data = await ine.get_dataset_data(
-        dataset_id="IPC",
-        start_date=start_date.strftime("%Y%m%d"),
-        end_date=end_date.strftime("%Y%m%d")
-    )
-    
-    print("\nLatest IPC data points:")
-    for entry in data[-5:]:  # Show last 5 entries
-        print(entry)
+            # Get specific dataset data (IPC - Consumer Price Index)
+            print("\n3. Fetching Actual Data...")
+            end_date = datetime.now()
+            start_date = end_date - timedelta(days=365)
+            
+            print(f"\nFetching IPC data from {start_date.date()} to {end_date.date()}")
+            data = await discovery._active_connectors[0].get_dataset_data(
+                dataset_id="IPC",
+                start_date=start_date,
+                end_date=end_date
+            )
+            
+            print("\nLatest IPC data points:")
+            if data and len(data) > 0:
+                for entry in data[-5:]:  # Show last 5 entries
+                    print(entry)
+            else:
+                print("No data available for the specified time period")
+        except Exception as e:
+            print(f"Error fetching data: {e}")
 
 if __name__ == "__main__":
     print("Starting ModelForge AI Workflow Example...")

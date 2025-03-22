@@ -88,57 +88,6 @@ print(spec.metric)     # rmse
 print(spec.horizon)    # 3M
 ```
 
-## Usage Examples
-
-### Using the Intent Parser
-```python
-from modelforge.intent_parser import parse_intent
-
-# Convert natural language to ML specification
-description = "Predict monthly sales using temperature and unemployment rate data"
-spec = parse_intent(description)
-
-print(spec.task_type)  # time_series_regression
-print(spec.target)     # sales
-print(spec.features)   # ["temp", "unemployment_rate", "sentiment_score"]
-```
-
-### Using the Data Discovery
-```python
-import asyncio
-from modelforge.data_discovery.catalog import DatasetCatalog
-from modelforge.data_discovery.discovery_service import DiscoveryService
-from modelforge.data_discovery.ine_connector import INEConnector
-
-async def main():
-    # Initialize components
-    catalog = DatasetCatalog()
-    ine = INEConnector()
-    discovery = DiscoveryService(catalog, ine)
-    
-    # Search for datasets
-    datasets = await discovery.search_datasets("inflation spain")
-    for dataset in datasets:
-        print(f"Found dataset: {dataset.name}")
-        print(f"Description: {dataset.description}")
-        print(f"Tags: {dataset.tags}")
-        print("---")
-    
-    # Get specific dataset metadata
-    ipc = await discovery.get_dataset_metadata("IPC")
-    print(f"IPC dataset schema: {ipc.schema}")
-    
-    # Get actual data
-    data = await ine.get_dataset_data(
-        dataset_id="IPC",
-        start_date="2024-01-01",
-        end_date="2024-03-01"
-    )
-    print("Latest IPC data:", data)
-
-if __name__ == "__main__":
-    asyncio.run(main())
-
 ## Development Setup
 
 1. Clone the repository:

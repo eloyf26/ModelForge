@@ -4,12 +4,19 @@ from typing import Dict, Any, Optional
 import json
 from pydantic import BaseModel, Field, field_validator, ConfigDict, model_validator
 from enum import Enum
+import openai
+import os
+from tenacity import retry, stop_after_attempt, wait_exponential, RetryError
 
 class TaskType(str, Enum):
     TIME_SERIES_REGRESSION = "time_series_regression"
     CLASSIFICATION = "classification"
     REGRESSION = "regression"
     CLUSTERING = "clustering"
+
+class ParsingError(Exception):
+    """Custom exception for parsing errors."""
+    pass
 
 class MLSpecification(BaseModel):
     """ML specification schema."""
@@ -38,20 +45,103 @@ class MLSpecification(BaseModel):
             raise ValueError("horizon is required for time series regression tasks")
         return self
 
+    @field_validator('metric')
+    def validate_metric(cls, v: str, values: Dict[str, Any]) -> str:
+        """Validate that the metric is appropriate for the task type."""
+        valid_metrics = {
+            'classification': ['accuracy', 'precision', 'recall', 'f1', 'auc'],
+            'regression': ['rmse', 'mae', 'mse', 'r2'],
+            'clustering': ['silhouette', 'calinski_harabasz', 'davies_bouldin'],
+            'time_series_regression': ['rmse', 'mae', 'mape', 'smape']
+        }
+        
+        task_type = values.data.get('task_type')
+        if task_type is None:
+            raise ValueError("task_type must be specified before metric")
+            
+        if task_type == TaskType.CLASSIFICATION and v.lower() not in valid_metrics['classification']:
+            raise ValueError(f"Invalid metric for classification: {v}")
+        elif task_type == TaskType.REGRESSION and v.lower() not in valid_metrics['regression']:
+            raise ValueError(f"Invalid metric for regression: {v}")
+        elif task_type == TaskType.CLUSTERING and v.lower() not in valid_metrics['clustering']:
+            raise ValueError(f"Invalid metric for clustering: {v}")
+        elif task_type == TaskType.TIME_SERIES_REGRESSION and v.lower() not in valid_metrics['time_series_regression']:
+            raise ValueError(f"Invalid metric for time series regression: {v}")
+            
+        return v.lower()
+
 # LLM prompt template for converting natural language to ML spec
-PROMPT_TEMPLATE = """
-Extract the ML specification from the following natural language description.
-Return a JSON object with the following fields:
-- task_type: The type of ML task (time_series_regression, classification, regression, clustering)
-- target: The target variable to predict
-- features: List of relevant features mentioned
-- metric: The evaluation metric to use
-- horizon: For time series tasks, the prediction horizon (e.g., "3M" for 3 months)
+PROMPT_TEMPLATE = """You are an AI assistant that converts natural language descriptions into structured ML specifications.
+
+Given the following description, extract the ML specification and return it as a JSON object.
 
 Description: {description}
 
-Format the response as a valid JSON object.
-"""
+The JSON object must include these fields:
+- task_type: Must be one of ["time_series_regression", "classification", "regression", "clustering"]
+- target: The target variable to predict (use simple, normalized names)
+- features: List of relevant features mentioned (empty list if none specified)
+- metric: The evaluation metric to use (must be appropriate for the task type)
+- horizon: Required for time_series_regression tasks (e.g., "3M" for 3 months), optional for others
+
+Rules:
+1. For time series tasks, horizon is required
+2. Metrics must match the task type:
+   - classification: accuracy, precision, recall, f1, auc
+   - regression: rmse, mae, mse, r2
+   - clustering: silhouette, calinski_harabasz, davies_bouldin
+   - time_series_regression: rmse, mae, mape, smape
+3. Return ONLY the JSON object, no additional text
+4. Use simple, normalized names (e.g., "sales" not "monthly_sales")
+
+Format the response as a valid JSON object."""
+
+def _call_llm_with_retry(prompt: str) -> Dict[str, Any]:
+    """Internal function to call LLM with retry logic."""
+    # Initialize OpenAI client
+    client = openai.OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
+    
+    # Call GPT-4 API
+    response = client.chat.completions.create(
+        model="gpt-4",
+        messages=[
+            {"role": "system", "content": "You are a helpful assistant that converts ML task descriptions into JSON specifications."},
+            {"role": "user", "content": prompt}
+        ],
+        temperature=0.1,  # Low temperature for consistent outputs
+        max_tokens=500
+    )
+    
+    # Extract and parse JSON response
+    json_str = response.choices[0].message.content.strip()
+    return json.loads(json_str)
+
+@retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=10))
+def _call_llm(prompt: str) -> Dict[str, Any]:
+    """
+    Call LLM API with retry logic.
+    
+    Args:
+        prompt: The formatted prompt to send to the LLM
+        
+    Returns:
+        Dict containing the LLM's response
+        
+    Raises:
+        ParsingError: If the LLM response cannot be parsed
+    """
+    # Check for API key first
+    if not os.getenv('OPENAI_API_KEY'):
+        raise ParsingError("OpenAI API key not found in environment variables")
+        
+    try:
+        return _call_llm_with_retry(prompt)
+    except openai.OpenAIError as e:
+        raise ParsingError(f"OpenAI API error: {str(e)}")
+    except json.JSONDecodeError as e:
+        raise ParsingError(f"Failed to parse LLM response as JSON: {str(e)}")
+    except Exception as e:
+        raise ParsingError(f"Unexpected error during LLM call: {str(e)}")
 
 def parse_intent(description: str) -> MLSpecification:
     """
@@ -64,22 +154,29 @@ def parse_intent(description: str) -> MLSpecification:
         MLSpecification object
         
     Raises:
-        ValueError: If the specification is invalid
+        ParsingError: If the specification cannot be parsed or is invalid
     """
     try:
-        # TODO: Replace with actual LLM call when implemented
-        # This is a mock implementation for now
-        mock_response = {
-            "task_type": "time_series_regression",
-            "target": "sales",
-            "features": ["temp", "unemployment_rate", "sentiment_score"],
-            "metric": "rmse",
-            "horizon": "3M"
-        }
+        # Format prompt with description
+        prompt = PROMPT_TEMPLATE.format(description=description)
         
-        # Validate the specification
-        spec = MLSpecification(**mock_response)
-        return spec
+        try:
+            # Call LLM to get specification
+            spec_dict = _call_llm(prompt)
+        except RetryError as e:
+            # Extract original error from retry error
+            if hasattr(e, 'last_attempt') and hasattr(e.last_attempt, 'exception'):
+                raise e.last_attempt.exception()
+            raise ParsingError("Failed to get response from LLM after retries")
         
+        # Validate and return specification
+        try:
+            spec = MLSpecification(**spec_dict)
+            return spec
+        except ValueError as e:
+            raise ParsingError(f"Invalid specification from LLM: {str(e)}")
+            
+    except ParsingError:
+        raise
     except Exception as e:
-        raise ValueError(f"Failed to parse intent: {str(e)}") 
+        raise ParsingError(f"Failed to parse intent: {str(e)}") 

@@ -64,17 +64,26 @@ git clone https://github.com/eloyf26/ModelForge.git
 cd ModelForge
 ```
 
-2. Install dependencies:
+2. Set up environment variables:
+```bash
+# Copy the environment template
+cp .env.example .env
+
+# Edit .env with your actual values
+# Required: OPENAI_API_KEY for intent parsing
+```
+
+3. Install dependencies:
 ```bash
 pip install -r requirements.txt
 ```
 
-3. Run tests:
+4. Run tests:
 ```bash
 pytest
 ```
 
-4. Start development server:
+5. Start development server:
 ```bash
 uvicorn modelforge.main:app --reload
 ```
@@ -84,11 +93,20 @@ The API will be available at:
 - Alternative API docs: http://127.0.0.1:8000/redoc
 - Root endpoint: http://127.0.0.1:8000/
 
+## Environment Variables
+
+The following environment variables are required:
+
+| Variable | Description | Required | Default |
+|----------|-------------|----------|---------|
+| OPENAI_API_KEY | OpenAI API key for intent parsing | Yes | None |
+
 ## Docker Support
 
 Build and run with Docker:
 ```bash
-docker build -t modelforge .
+# Build with your OpenAI API key
+docker build -t modelforge --build-arg OPENAI_API_KEY=your_key_here .
 docker run -p 8000:8000 modelforge
 ```
 

@@ -1,23 +1,28 @@
 FROM python:3.12-slim
 
-WORKDIR /app
+# Set environment variables
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
-    build-essential \
-    git \
-    && rm -rf /var/lib/apt/lists/*
+# Accept build argument for OpenAI API key
+ARG OPENAI_API_KEY
+ENV OPENAI_API_KEY=$OPENAI_API_KEY
+
+# Set working directory
+WORKDIR /app
 
 # Copy requirements first for better caching
 COPY requirements.txt .
+
+# Install dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy the rest of the application
+# Copy project files
 COPY . .
 
-# Set environment variables
-ENV PYTHONPATH=/app
-ENV PYTHONUNBUFFERED=1
+# Expose port
+EXPOSE 8000
 
-# Default command
+# Run the application
 CMD ["uvicorn", "modelforge.main:app", "--host", "0.0.0.0", "--port", "8000"]

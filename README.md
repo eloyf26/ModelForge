@@ -112,7 +112,14 @@ pip install -r requirements.txt
 
 4. Run tests:
 ```bash
+# Install test dependencies
+pip install -r requirements-dev.txt
+
+# Run all tests
 pytest
+
+# Run tests with coverage report
+./run_tests.sh
 ```
 
 5. Start development server:

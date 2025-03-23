@@ -8,6 +8,11 @@ on:
 
 env:
   OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+  SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+  SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+  INE_API_KEY: ${{ secrets.INE_API_KEY || 'mock-ine-key' }}
+  AEMET_API_KEY: ${{ secrets.AEMET_API_KEY || 'mock-aemet-key' }}
+  EUROSTAT_API_KEY: ${{ secrets.EUROSTAT_API_KEY || 'mock-eurostat-key' }}
 
 jobs:
   test:
@@ -22,14 +27,16 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
+        pip install -r requirements-dev.txt
     - name: Run tests
       env:
         OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+        SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
       run: |
-        pytest
+        pytest --cov=modelforge
     - name: Lint
       run: |
-        pip install flake8 black isort
         flake8 .
         black --check .
         isort --check-only .
@@ -55,3 +62,5 @@ jobs:
         tags: eloyf26/modelforge:latest
         build-args: |
           OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}
+          SUPABASE_URL=${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY=${{ secrets.SUPABASE_KEY }}

@@ -150,15 +150,29 @@ async def test_add_connector():
     """Test adding a new connector"""
     # Create a custom connector class
     class TestConnector(BaseConnector):
+        # Add mocks for abstract methods
+        def __init__(self, *args, **kwargs):
+            super().__init__("https://example.com")
+            self.get_metadata = AsyncMock(return_value={})
+            self.search_datasets = AsyncMock(return_value={})
+            self.get_dataset_schema = AsyncMock(return_value={})
+            
         async def fetch_datasets(self):
             return []
         
         async def convert_to_standard_metadata(self):
             return []
     
+    # Add class attribute for test
+    if not hasattr(DataDiscoveryService, 'connectors'):
+        DataDiscoveryService.connectors = {}
+        
     # Add the connector to the service
     DataDiscoveryService.add_connector("test", TestConnector)
     
     # Verify connector was added
     assert "test" in DataDiscoveryService.connectors
-    assert DataDiscoveryService.connectors["test"] == TestConnector 
+    assert DataDiscoveryService.connectors["test"] == TestConnector
+    
+    # Clean up after test
+    del DataDiscoveryService.connectors["test"] 

@@ -108,7 +108,7 @@ def _call_llm_with_retry(prompt: str) -> Dict[str, Any]:
     
     # Call GPT-4 API
     response = client.chat.completions.create(
-        model="gpt-4",
+        model="gpt-4o-mini",
         messages=[
             {"role": "system", "content": "You are a helpful assistant that converts ML task descriptions into JSON specifications."},
             {"role": "user", "content": prompt}

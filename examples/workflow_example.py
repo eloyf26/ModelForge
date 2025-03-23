@@ -5,8 +5,8 @@ from dotenv import load_dotenv
 
 from modelforge.intent_parser import parse_intent
 from modelforge.data_discovery.catalog import DatasetCatalog
-from modelforge.data_discovery.discovery_service import DiscoveryService
-from modelforge.data_discovery.ine_connector import INEConnector
+from modelforge.data_discovery.discovery_service import DataDiscoveryService
+from modelforge.data_discovery.connectors.ine import INEConnector
 
 async def run_workflow():
     print("1. Starting Intent Parsing...")
@@ -31,7 +31,7 @@ async def run_workflow():
     # Initialize data discovery components
     catalog = DatasetCatalog()
     ine = INEConnector()
-    discovery = DiscoveryService(catalog, ine)
+    discovery = DataDiscoveryService(catalog, ine)
 
     # Search for relevant datasets based on the specification
     search_query = f"{spec.target} spain"

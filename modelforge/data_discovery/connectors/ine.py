@@ -1,10 +1,7 @@
 from typing import Any, Dict, List, Optional
 from datetime import datetime
-import logging
 from ..catalog import DatasetMetadata, DatasetSchema
 from .base import BaseConnector
-
-logger = logging.getLogger(__name__)
 
 class INEConnector(BaseConnector):
     """Connector for the Spanish Statistical Office (INE) API"""
@@ -18,10 +15,8 @@ class INEConnector(BaseConnector):
     async def get_metadata(self) -> Dict[str, Any]:
         """Get metadata about available INE datasets"""
         try:
-            logger.debug("Fetching INE metadata")
             return await self._make_request("OPERACIONES_DISPONIBLES")
-        except Exception as e:
-            logger.error("Failed to fetch INE metadata: %s", str(e))
+        except Exception:
             return {
                 "name": "INE API",
                 "description": "Spanish National Statistics Institute API",
@@ -30,17 +25,15 @@ class INEConnector(BaseConnector):
         
     async def search_datasets(self, query: str) -> List[DatasetMetadata]:
         """Search for INE datasets matching query"""
-        logger.info("Searching INE datasets with query: %s", query)
         try:
             response = await self._make_request("Search", params={"q": query})
             if not response:
-                logger.warning("No datasets found for query: %s", query)
                 return []
                 
             datasets = []
             for item in response:
                 try:
-                    dataset = DatasetMetadata(
+                    datasets.append(DatasetMetadata(
                         id=str(item.get("COD", "")),
                         name=item.get("NAME", ""),
                         description=item.get("DESCRIPTION", ""),
@@ -54,44 +47,34 @@ class INEConnector(BaseConnector):
                         endpoint="https://servicios.ine.es/wstempus/js/ES",
                         update_frequency="monthly",
                         last_updated=datetime.now()
-                    )
-                    datasets.append(dataset)
-                    logger.debug("Found dataset: %s", dataset.id)
-                except Exception as e:
-                    logger.error("Failed to parse dataset metadata: %s", str(e))
+                    ))
+                except Exception:
                     continue
-            logger.info("Found %d datasets matching query: %s", len(datasets), query)
             return datasets
-        except Exception as e:
-            logger.error("Failed to search datasets: %s", str(e))
+        except Exception:
             return []
         
     async def get_dataset_schema(self, dataset_id: str) -> Dict[str, Any]:
         """Get schema information for a specific INE dataset"""
-        logger.debug("Fetching schema for dataset: %s", dataset_id)
         try:
             response = await self._make_request(f"VARIABLES_OPERACION/{dataset_id}")
             if not response:
-                logger.warning("No schema found for dataset: %s", dataset_id)
                 return {"fields": {}}
             return {"fields": {
                 "date": "datetime",
                 "value": "float",
                 "change": "float"
             }}
-        except Exception as e:
-            logger.error("Failed to fetch schema for dataset %s: %s", dataset_id, str(e))
+        except Exception:
             return {"fields": {}}
         
     async def get_dataset_data(self, dataset_id: str, start_date: datetime, end_date: datetime) -> List[Dict[str, Any]]:
         """Get data for a specific INE dataset within a date range"""
-        logger.info("Fetching data for dataset %s from %s to %s", dataset_id, start_date, end_date)
         try:
             date_str = f"{start_date.strftime('%Y%m%d')}:{end_date.strftime('%Y%m%d')}"
             response = await self._make_request(f"DATOS_SERIE/{dataset_id}", params={"date": date_str})
             
             if not response or not isinstance(response, dict) or "Data" not in response:
-                logger.warning("No data found for dataset %s in date range", dataset_id)
                 return []
                 
             data = []
@@ -102,13 +85,10 @@ class INEConnector(BaseConnector):
                         "value": item.get("Valor"),
                         "change": item.get("Variacion")
                     })
-                except Exception as e:
-                    logger.error("Failed to parse data item: %s", str(e))
+                except Exception:
                     continue
-            logger.info("Retrieved %d data points for dataset %s", len(data), dataset_id)
             return data
-        except Exception as e:
-            logger.error("Failed to fetch data for dataset %s: %s", dataset_id, str(e))
+        except Exception:
             return []
         
     async def get_series_by_filters(
@@ -133,7 +113,6 @@ class INEConnector(BaseConnector):
             friendly_format: Return data in a more readable format
             include_metadata: Include metadata in response
         """
-        logger.info("Fetching series for operation %s with filters: %s", operation_id, filters)
         params = {}
         
         # Add filters
@@ -159,12 +138,10 @@ class INEConnector(BaseConnector):
                 tip += "M"
             params["tip"] = tip
             
-        logger.debug("Making request with params: %s", params)
         return await self._make_request(f"ES/DATOS_METADATAOPERACION/{operation_id}", params=params)
         
     async def get_available_periodicities(self) -> Dict[str, Any]:
         """Get list of available periodicities"""
-        logger.debug("Fetching available periodicities")
         return await self._make_request("ES/PERIODICIDADES")
         
     async def get_variable_values(
@@ -178,7 +155,6 @@ class INEConnector(BaseConnector):
             operation_id: The operation identifier (e.g. 'IPC')
             variable_id: The variable identifier
         """
-        logger.debug("Fetching values for variable %s in operation %s", variable_id, operation_id)
         return await self._make_request(f"ES/VALORES_VARIABLEOPERACION/{variable_id}/{operation_id}")
         
     async def get_series_metadata(
@@ -199,7 +175,6 @@ class INEConnector(BaseConnector):
             detail_level: Detail level (0, 1, or 2)
             friendly_format: Return data in a more readable format
         """
-        logger.info("Fetching metadata for operation %s with filters: %s", operation_id, filters)
         params = {}
         
         # Add filters
@@ -216,5 +191,4 @@ class INEConnector(BaseConnector):
         if friendly_format:
             params["tip"] = "A"
             
-        logger.debug("Making request with params: %s", params)
         return await self._make_request(f"ES/SERIE_METADATAOPERACION/{operation_id}", params=params) 

@@ -7,6 +7,10 @@ from enum import Enum
 import openai
 import os
 from tenacity import retry, stop_after_attempt, wait_exponential, RetryError
+from modelforge.logging.logger import get_logger
+
+# Create logger for this module
+logger = get_logger(__name__)
 
 class TaskType(str, Enum):
     TIME_SERIES_REGRESSION = "time_series_regression"
@@ -99,9 +103,11 @@ Format the response as a valid JSON object."""
 def _call_llm_with_retry(prompt: str) -> Dict[str, Any]:
     """Internal function to call LLM with retry logic."""
     # Initialize OpenAI client
+    logger.debug("Initializing OpenAI client")
     client = openai.OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
     
     # Call GPT-4 API
+    logger.info("Calling OPENAI API")
     response = client.chat.completions.create(
         model="gpt-4o-mini",
         messages=[
@@ -113,6 +119,7 @@ def _call_llm_with_retry(prompt: str) -> Dict[str, Any]:
     )
     
     # Extract and parse JSON response
+    logger.debug("Parsing JSON response from LLM")
     json_str = response.choices[0].message.content.strip()
     return json.loads(json_str)
 
@@ -132,15 +139,19 @@ def _call_llm(prompt: str) -> Dict[str, Any]:
     """
     # Check for API key first
     if not os.getenv('OPENAI_API_KEY'):
+        logger.error("OpenAI API key not found in environment variables")
         raise ParsingError("OpenAI API key not found in environment variables")
         
     try:
         return _call_llm_with_retry(prompt)
     except openai.OpenAIError as e:
+        logger.error(f"OpenAI API error: {str(e)}")
         raise ParsingError(f"OpenAI API error: {str(e)}")
     except json.JSONDecodeError as e:
+        logger.error(f"Failed to parse LLM response as JSON: {str(e)}")
         raise ParsingError(f"Failed to parse LLM response as JSON: {str(e)}")
     except Exception as e:
+        logger.error(f"Unexpected error during LLM call: {str(e)}")
         raise ParsingError(f"Unexpected error during LLM call: {str(e)}")
 
 def parse_intent(description: str) -> MLSpecification:
@@ -156,27 +167,35 @@ def parse_intent(description: str) -> MLSpecification:
     Raises:
         ParsingError: If the specification cannot be parsed or is invalid
     """
+    logger.info("Parsing intent from natural language description")
     try:
         # Format prompt with description
         prompt = PROMPT_TEMPLATE.format(description=description)
+        logger.debug(f"Formatted prompt for LLM")
         
         try:
             # Call LLM to get specification
+            logger.info("Calling LLM to get ML specification")
             spec_dict = _call_llm(prompt)
         except RetryError as e:
             # Extract original error from retry error
+            logger.warning("Failed to get response from LLM after retries")
             if hasattr(e, 'last_attempt') and hasattr(e.last_attempt, 'exception'):
                 raise e.last_attempt.exception()
             raise ParsingError("Failed to get response from LLM after retries")
         
         # Validate and return specification
         try:
+            logger.info("Validating ML specification")
             spec = MLSpecification(**spec_dict)
+            logger.info(f"Successfully parsed intent: {spec.task_type} on {spec.target}")
             return spec
         except ValueError as e:
+            logger.error(f"Invalid specification from LLM: {str(e)}")
             raise ParsingError(f"Invalid specification from LLM: {str(e)}")
             
     except ParsingError:
         raise
     except Exception as e:
+        logger.error(f"Failed to parse intent: {str(e)}")
         raise ParsingError(f"Failed to parse intent: {str(e)}") 

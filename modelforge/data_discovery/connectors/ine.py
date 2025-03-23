@@ -1,6 +1,9 @@
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 from datetime import datetime
 from .base import BaseConnector
+from ..catalog import DatasetMetadata, DatasetSchema
+import time
+import aiohttp
 
 class INEConnector(BaseConnector):
     """Connector for the Spanish Statistical Office (INE) API"""
@@ -22,12 +25,73 @@ class INEConnector(BaseConnector):
     async def get_dataset_schema(self, dataset_id: str) -> Dict[str, Any]:
         """Get schema information for a specific INE dataset"""
         return await self._make_request(f"ES/VARIABLES_OPERACION/{dataset_id}")
+    
+    async def convert_to_standard_metadata(self) -> List[DatasetMetadata]:
+        """
+        Convert INE metadata to standard DatasetMetadata format
+        
+        Fetches metadata from the INE API and converts it to a list of
+        standardized DatasetMetadata objects.
+        
+        Returns:
+            List of DatasetMetadata objects
+        """
+        datasets = []
+        try:
+            # Get metadata from INE API
+            metadata = await self.get_metadata()
+            
+            # Check if operaciones key exists in the response
+            if 'operaciones' not in metadata:
+                self.logger.error("Invalid response format: 'operaciones' key not found in INE API response")
+                return datasets
+                
+            self.logger.debug(f"Processing {len(metadata['operaciones'])} datasets from INE API")
+            for dataset in metadata['operaciones']:
+                try:
+                    # Get schema information
+                    schema_info = await self.get_dataset_schema(dataset['Id'])
+                    
+                    # Convert to our schema format
+                    schema = {}
+                    if 'variables' in schema_info:
+                        for field in schema_info['variables']:
+                            schema[field['Id']] = DatasetSchema(
+                                name=field['Id'],
+                                data_type=field['Tipo'],
+                                description=field.get('Nombre'),
+                                is_nullable=True
+                            )
+                    
+                    # Create dataset metadata
+                    dataset_metadata = DatasetMetadata(
+                        id=dataset['Id'],
+                        name=dataset['Nombre'],
+                        source="ine",
+                        endpoint=f"https://servicios.ine.es/wstempus/js/ES/DATOS_SERIE/{dataset['Id']}",
+                        schema=schema,
+                        update_frequency='unknown',
+                        last_updated=datetime.now(),
+                        description=dataset.get('Descripcion'),
+                        tags=[],
+                        license=None,
+                        rate_limit=self.rate_limit
+                    )
+                    datasets.append(dataset_metadata)
+                except Exception as e:
+                    self.logger.error(f"Error processing INE dataset {dataset.get('Id', 'unknown')}: {str(e)}")
+                
+            self.logger.info(f"Successfully converted {len(datasets)} INE datasets to standard format")
+        except Exception as e:
+            self.logger.error(f"Error converting INE metadata: {str(e)}")
+            
+        return datasets
         
     async def get_dataset_data(
         self, 
         dataset_id: str, 
-        start_date: Optional[datetime] = None,
-        end_date: Optional[datetime] = None,
+        start_date: Optional[Union[datetime, str]] = None,
+        end_date: Optional[Union[datetime, str]] = None,
         last_n: Optional[int] = None,
         periodicity: Optional[int] = None,
         friendly_format: bool = False,
@@ -38,8 +102,8 @@ class INEConnector(BaseConnector):
         
         Args:
             dataset_id: The dataset identifier
-            start_date: Start date for data range
-            end_date: End date for data range
+            start_date: Start date for data range (datetime object or string in format YYYYMMDD)
+            end_date: End date for data range (datetime object or string in format YYYYMMDD)
             last_n: Get last N periods instead of date range
             periodicity: Filter by periodicity (1=monthly, 3=quarterly, 6=biannual, 12=yearly)
             friendly_format: Return data in a more readable format
@@ -52,9 +116,24 @@ class INEConnector(BaseConnector):
         if last_n is not None:
             params["nult"] = last_n
         elif start_date is not None:
-            date_str = start_date.strftime("%Y%m%d")
+            # Convert datetime to string if needed
+            if isinstance(start_date, datetime):
+                start_date_str = start_date.strftime("%Y%m%d")
+            else:
+                # Assume it's already a string
+                start_date_str = start_date
+                
             if end_date is not None:
-                date_str += ":" + end_date.strftime("%Y%m%d")
+                if isinstance(end_date, datetime):
+                    end_date_str = end_date.strftime("%Y%m%d")
+                else:
+                    # Assume it's already a string
+                    end_date_str = end_date
+                    
+                date_str = f"{start_date_str}:{end_date_str}"
+            else:
+                date_str = start_date_str
+                
             params["date"] = date_str
             
         # Add optional parameters

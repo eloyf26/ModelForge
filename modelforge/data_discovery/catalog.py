@@ -1,33 +1,30 @@
 from typing import Dict, List, Optional
-from pydantic import BaseModel, Field, HttpUrl
-from datetime import datetime
-
-class DatasetSchema(BaseModel):
-    """Schema definition for a dataset field"""
-    name: str
-    data_type: str
-    description: Optional[str] = None
-    is_nullable: bool = True
-
-class DatasetMetadata(BaseModel):
-    """Metadata for a single dataset"""
-    id: str
-    name: str
-    source: str
-    endpoint: HttpUrl
-    schema: Dict[str, DatasetSchema]
-    update_frequency: str
-    last_updated: datetime
-    description: Optional[str] = None
-    tags: List[str] = Field(default_factory=list)
-    license: Optional[str] = None
-    rate_limit: Optional[int] = None  # requests per minute
+from .models import DatasetMetadata, DatasetSchema
+from .storage.supabase import SupabaseStorage
 
 class DatasetCatalog:
     """Manages the catalog of available datasets"""
-    def __init__(self):
+    def __init__(self, use_persistent_storage: bool = False):
         self._datasets: Dict[str, DatasetMetadata] = {}
         self._cache_ttl: int = 3600  # 1 hour cache TTL
+        self._use_persistent_storage = use_persistent_storage
+        self._storage = SupabaseStorage() if use_persistent_storage else None
+
+    async def load_from_storage(self) -> None:
+        """Load datasets from persistent storage if enabled"""
+        if not self._use_persistent_storage or not self._storage:
+            return
+            
+        datasets = await self._storage.load_datasets()
+        for dataset in datasets:
+            self._datasets[dataset.id] = dataset
+
+    async def save_to_storage(self) -> None:
+        """Save datasets to persistent storage if enabled"""
+        if not self._use_persistent_storage or not self._storage:
+            return
+            
+        await self._storage.save_datasets(list(self._datasets.values()))
 
     def add_dataset(self, metadata: DatasetMetadata) -> None:
         """Add a dataset to the catalog"""

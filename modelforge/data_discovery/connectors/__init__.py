@@ -5,4 +5,9 @@ from .ine import INEConnector
 from .aemet import AEMETConnector
 from .eurostat import EurostatConnector
 
-__all__ = ['BaseConnector', 'INEConnector', 'AEMETConnector', 'EurostatConnector'] 
+__all__ = [
+    'BaseConnector',
+    'INEConnector',
+    'AEMETConnector',
+    'EurostatConnector',
+] 

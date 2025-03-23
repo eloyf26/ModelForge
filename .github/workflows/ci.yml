@@ -6,12 +6,20 @@ on:
   pull_request:
     branches: [ main ]
 
+env:
+  OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+  SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+  SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+  INE_API_KEY: ${{ secrets.INE_API_KEY || 'mock-ine-key' }}
+  AEMET_API_KEY: ${{ secrets.AEMET_API_KEY || 'mock-aemet-key' }}
+  EUROSTAT_API_KEY: ${{ secrets.EUROSTAT_API_KEY || 'mock-eurostat-key' }}
+
 jobs:
   test:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
-    - name: Set up Python 3.12
+    - name: Set up Python
       uses: actions/setup-python@v5
       with:
         python-version: '3.12'
@@ -19,20 +27,40 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
-    - name: Run linting
+        pip install -r requirements-dev.txt
+    - name: Run tests
+      env:
+        OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+        SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+      run: |
+        pytest --cov=modelforge
+    - name: Lint
       run: |
         flake8 .
-        black . --check
-        isort . --check
-    - name: Run tests
-      run: |
-        pytest
+        black --check .
+        isort --check-only .
 
   build:
-    runs-on: ubuntu-latest
     needs: test
+    runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'
     steps:
     - uses: actions/checkout@v4
-    - name: Build Docker image
-      run: docker build -t modelforge .
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+    - name: Login to Docker Hub
+      uses: docker/login-action@v3
+      with:
+        username: ${{ secrets.DOCKERHUB_USERNAME }}
+        password: ${{ secrets.DOCKERHUB_TOKEN }}
+    - name: Build and push
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        push: true
+        tags: eloyf26/modelforge:latest
+        build-args: |
+          OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}
+          SUPABASE_URL=${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY=${{ secrets.SUPABASE_KEY }}

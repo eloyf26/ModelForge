@@ -3,3 +3,6 @@ ModelForge AI - AutoML platform that transforms plain-language requirements into
 """
 
 __version__ = "1.0.0"
+
+# Import and expose the logger for easy access
+from .logging.logger import get_logger, app_logger

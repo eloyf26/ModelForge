@@ -1,0 +1,7 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+- Always modify the [README.md](mdc:README.md) or [SPEC.md](mdc:SPEC.md) if something does not match the current status, specially the folder structure
+- Always think of large scale projects. Do not write code in a prototype/script way. Create a potential large scale project. 
